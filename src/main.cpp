@@ -376,8 +376,11 @@ namespace LOFI
 		/// is the engine running
 		bool engineIsRunning_;
 
-		/// the SDL screen surface
+		/// the SDL screen surface that serves as the game screen
 		SDL_Surface* screen_;
+		
+		/// the small SDL surface that serves as the main screen
+		SDL_Surface* mainScreen_;
 		
 		/// the SDL event data
 		SDL_Event* event_;
@@ -538,6 +541,7 @@ namespace LOFI
 	Engine::Engine() :
 		engineIsRunning_(false),
 		screen_(0),
+		mainScreen_(0),
 		event_(0),
 		artManager_(0),
 		mapView_(0),
@@ -592,6 +596,7 @@ namespace LOFI
 		}
 		
 		defaultFont_ = new BitmapFont();
+		defaultFont_->Load("resources/fonts/font8x8white.png", 8, 8, 1);
 		
 		// create the art manager
 		artManager_ = new ArtManager();
@@ -630,12 +635,23 @@ namespace LOFI
 	bool Engine::InitializeScreen()
 	{
 		// initialize the screen
-		screen_ = SDL_SetVideoMode(300, 400, 24, SDL_HWSURFACE | SDL_DOUBLEBUF);
-
-		if (!screen_)
+		mainScreen_ = SDL_SetVideoMode(640, 480, 24, SDL_HWSURFACE | SDL_DOUBLEBUF);
+		
+		if (!mainScreen_)
 		{
 			// log the error
 			WriteLog(stderr, "SDL Screen Initialization Failed!\n\tSDL Error: %s\n", SDL_GetError());
+
+			// return failure
+			return false;
+		}
+		
+		// create the game screen
+		screen_ = SDL_CreateRGBSurface(SDL_SRCCOLORKEY, 300, 400, mainScreen_->format->BitsPerPixel, 0, 0, 0, 0);
+		if (!screen_)
+		{
+			// log the error
+			WriteLog(stderr, "SDL Game Screen Initialization Failed!\n\tSDL Error: %s\n", SDL_GetError());
 
 			// return failure
 			return false;
@@ -656,7 +672,7 @@ namespace LOFI
 		Position playerPosition(0, 0, 0); 
 		char hudActionMessage[0x100];
 		char compassMessage[0x32];
-		bool requestUpdateHud = true;
+		bool requestUpdateDisplay = true;
 		bool requestClearActionMessage = false;
 		int actionMessageClearDelay = 50;
 		int actionMessageClearCounter = actionMessageClearDelay;
@@ -678,6 +694,29 @@ namespace LOFI
 			(0x2 == playerPosition.facing_) ? "South" :
 			(0x3 == playerPosition.facing_) ? "West" : "<Invalid Direction>");
 
+		int gameScreenX = 40;
+		int gameScreenY = mainScreen_->h / 2 - screen_->h / 2;
+		
+		
+		SDL_Surface* mainScreenOverlay = Engine::LoadImageResource("resources/overlays/mainscreen.png");
+		
+		if (!mainScreenOverlay)
+		{
+			this->Stop();
+			return;
+		}
+
+
+		// better input handling
+		const int MOTIONBUTTON_UP 		= 0x0;
+		const int MOTIONBUTTON_DOWN 	= 0x1;
+		const int MOTIONBUTTON_LEFT 	= 0x2;
+		const int MOTIONBUTTON_RIGHT 	= 0x3;
+		bool motionButtonDown[4] = { false, false, false, false };
+		
+		// slow the fucking player down!
+		int playerMotionDelay = 10;
+		int playerMotionCounter = playerMotionDelay;
 
 		// while the engine is running
 		while(engineIsRunning_)
@@ -710,18 +749,56 @@ namespace LOFI
 							case 'W':
 							case SDLK_UP:
 							{
-								gameState_->MovePlayerForward();
-								sprintf(hudActionMessage, "%s", "Moved Forward...");
-								requestUpdateHud = true;
+								motionButtonDown[MOTIONBUTTON_UP] = true;
 							} break;
 							
 							case 's':
 							case 'S':
 							case SDLK_DOWN:
 							{
-								gameState_->MovePlayerBack();
-								sprintf(hudActionMessage, "%s", "Moved Back...");
-								requestUpdateHud = true;
+								motionButtonDown[MOTIONBUTTON_DOWN] = true;
+							} break;
+							
+							case 'a':
+							case 'A':
+							case SDLK_LEFT:
+							{
+								//gameState_->TurnPlayerLeft();
+								//sprintf(hudActionMessage, "%s", "Turned Left...");
+								//requestUpdateDisplay = true;
+							} break;
+							
+							case 'd':
+							case 'D':
+							case SDLK_RIGHT:
+							{
+								//gameState_->TurnPlayerRight();
+								//sprintf(hudActionMessage, "%s", "Turned Right...");
+								//requestUpdateDisplay = true;
+							} break;
+
+							default: break;
+						} // end switch
+					} break;
+					
+					// a key was released
+					case SDL_KEYUP:
+					{
+						// what key is up
+						switch(event_->key.keysym.sym)
+						{
+							case 'w':
+							case 'W':
+							case SDLK_UP:
+							{
+								motionButtonDown[MOTIONBUTTON_UP] = false;
+							} break;
+							
+							case 's':
+							case 'S':
+							case SDLK_DOWN:
+							{
+								motionButtonDown[MOTIONBUTTON_DOWN] = false;
 							} break;
 							
 							case 'a':
@@ -730,7 +807,7 @@ namespace LOFI
 							{
 								gameState_->TurnPlayerLeft();
 								sprintf(hudActionMessage, "%s", "Turned Left...");
-								requestUpdateHud = true;
+								requestUpdateDisplay = true;
 							} break;
 							
 							case 'd':
@@ -739,22 +816,49 @@ namespace LOFI
 							{
 								gameState_->TurnPlayerRight();
 								sprintf(hudActionMessage, "%s", "Turned Right...");
-								requestUpdateHud = true;
+								requestUpdateDisplay = true;
 							} break;
-
 							default: break;
-						} // end switch
+						}
 					} break;
 
 					default: break;
 				} // end switch
 			} // end while
+			
+			// new player motion
+			if (motionButtonDown[MOTIONBUTTON_UP])
+			{
+				if (--playerMotionCounter <= 0)
+				{
+					playerMotionCounter = playerMotionDelay;
+					
+					gameState_->MovePlayerForward();
+					sprintf(hudActionMessage, "%s", "Moved Forward...");
+					requestUpdateDisplay = true;
+				}
+			}
+			
+			if (motionButtonDown[MOTIONBUTTON_DOWN])
+			{
+				gameState_->MovePlayerBack();
+				sprintf(hudActionMessage, "%s", "Moved Back...");
+				requestUpdateDisplay = true;
+			}
+			
+			if (motionButtonDown[MOTIONBUTTON_LEFT])
+			{
+			}
+			
+			if (motionButtonDown[MOTIONBUTTON_RIGHT])
+			{
+			}
 
 			// clear the screen blue-ish color
 			// this->ClearScreen(SDL_MapRGB(screen_->format, 0, 192, 255));
 
 			// draw
-			mapView_->RenderMap(screen_, gameState_->GetCurrentMap(), gameState_->GetPlayerPosition());
+			
 			
 			// draw hud
 			
@@ -768,9 +872,10 @@ namespace LOFI
 			{
 				sprintf(hudActionMessage, "%s", "Waiting...");
 				requestClearActionMessage = false;
+				requestUpdateDisplay = true;
 			}
 			
-			if (requestUpdateHud)
+			if (requestUpdateDisplay)
 			{
 				actionMessageX = ((screen_->w / 2) - ((strlen(hudActionMessage) * 9) / 2));
 	
@@ -786,13 +891,23 @@ namespace LOFI
 					(0x2 == playerPosition.facing_) ? "South" :
 					(0x3 == playerPosition.facing_) ? "West" : "<Invalid Direction>");
 			
-				requestUpdateHud = false;
+				mapView_->RenderMap(screen_, gameState_->GetCurrentMap(), gameState_->GetPlayerPosition());
+				
+				defaultFont_->Print(screen_, actionMessageX, 8, "%s", hudActionMessage);
+				defaultFont_->Print(screen_, 8, screen_->h - 34, "Player X: %2d", playerX);
+				defaultFont_->Print(screen_, 8, screen_->h - 25, "Player Z: %2d", playerZ);
+				defaultFont_->Print(screen_, 8, screen_->h - 16, "%s", compassMessage);
+			
+				// blit the game screen onto the main screen
+				Engine::BlitSprite(screen_, mainScreen_, gameScreenX, gameScreenY);
+			
+				// blit the overlay
+				Engine::BlitSprite(mainScreenOverlay, mainScreen_, 0, 0);
+				
+				requestUpdateDisplay = false;
 			}
 			
-			defaultFont_->Print(screen_, actionMessageX, 8, "%s", hudActionMessage);
-			defaultFont_->Print(screen_, 8, screen_->h - 32, "Player X: %2d", playerX);
-			defaultFont_->Print(screen_, 8, screen_->h - 24, "Player Z: %2d", playerZ);
-			defaultFont_->Print(screen_, 8, screen_->h - 16, "%s", compassMessage);
+			
 			
 			// flip the screen
 			this->FlipScreen();
@@ -800,6 +915,8 @@ namespace LOFI
 			// reduce the cpu hoggingness of SDL ^-^
 			SDL_Delay(20);
 		} // end while
+		
+		Engine::UnloadImageResource(mainScreenOverlay);
 
 	}
 
@@ -816,6 +933,9 @@ namespace LOFI
 		_TMP_DELOBJ(defaultFont_)
 
 		#undef _TMP_DELOBJ
+		
+		// unload the game screen
+		Engine::UnloadImageResource(screen_);
 	}
 
 	////////////////////////////////////////////////////////////////////////////
@@ -840,14 +960,14 @@ namespace LOFI
 
 	void Engine::FlipScreen()
 	{
-		SDL_Flip(screen_);
+		SDL_Flip(mainScreen_);
 	}
 	
 	////////////////////////////////////////////////////////////////////////////
 
 	void Engine::ClearScreen(unsigned int color)
 	{
-		SDL_FillRect(screen_, 0, color);
+		SDL_FillRect(mainScreen_, 0, color);
 	}
 	
 	////////////////////////////////////////////////////////////////////////////
