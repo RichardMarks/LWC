@@ -143,6 +143,8 @@ namespace LOFI
 	/**
 	 * @class GameState
 	 * @brief C++ port of Java public class com.scrimisms.LofiWanderings.GameState
+	 *
+	 * Updated by Richard Marks to include strafing and condition checking
 	 */
 	class GameState
 	{
@@ -150,12 +152,20 @@ namespace LOFI
 		GameState();
 		~GameState();
 		void StartNewGame();
-		void MovePlayerForward();
+		
+		bool MovePlayerForward();
+		bool MovePlayerBack();
+		
+		// new strafing motion commands
+		bool MovePlayerLeft();
+		bool MovePlayerRight();
+		
 		void TurnPlayerLeft();
 		void TurnPlayerRight();
-		void MovePlayerBack();
+		
 		Map* GetCurrentMap() const;
 		Position* GetPlayerPosition() const;
+		
 	private:
 		Map* currentMap_;
 		Position* playerPosition_;
@@ -708,10 +718,10 @@ namespace LOFI
 
 
 		// better input handling
-		const int MOTIONBUTTON_UP 		= 0x0;
-		const int MOTIONBUTTON_DOWN 	= 0x1;
-		const int MOTIONBUTTON_LEFT 	= 0x2;
-		const int MOTIONBUTTON_RIGHT 	= 0x3;
+		const int MOTIONBUTTON_UP 			= 0x0;
+		const int MOTIONBUTTON_DOWN 		= 0x1;
+		const int MOTIONBUTTON_STRAFELEFT 	= 0x2;
+		const int MOTIONBUTTON_STRAFERIGHT 	= 0x3;
 		bool motionButtonDown[4] = { false, false, false, false };
 		
 		// slow the fucking player down!
@@ -759,24 +769,22 @@ namespace LOFI
 								motionButtonDown[MOTIONBUTTON_DOWN] = true;
 							} break;
 							
-							case 'a':
-							case 'A':
-							case SDLK_LEFT:
+							case 'q':
+							case 'Q':
+							case SDLK_COMMA:
+							case SDLK_LESS:
 							{
-								//gameState_->TurnPlayerLeft();
-								//sprintf(hudActionMessage, "%s", "Turned Left...");
-								//requestUpdateDisplay = true;
+								motionButtonDown[MOTIONBUTTON_STRAFELEFT] = true;
 							} break;
 							
-							case 'd':
-							case 'D':
-							case SDLK_RIGHT:
+							case 'e':
+							case 'E':
+							case SDLK_PERIOD:
+							case SDLK_GREATER:
 							{
-								//gameState_->TurnPlayerRight();
-								//sprintf(hudActionMessage, "%s", "Turned Right...");
-								//requestUpdateDisplay = true;
+								motionButtonDown[MOTIONBUTTON_STRAFERIGHT] = true;
 							} break;
-
+							
 							default: break;
 						} // end switch
 					} break;
@@ -799,6 +807,22 @@ namespace LOFI
 							case SDLK_DOWN:
 							{
 								motionButtonDown[MOTIONBUTTON_DOWN] = false;
+							} break;
+							
+							case 'q':
+							case 'Q':
+							case SDLK_COMMA:
+							case SDLK_LESS:
+							{
+								motionButtonDown[MOTIONBUTTON_STRAFELEFT] = false;
+							} break;
+							
+							case 'e':
+							case 'E':
+							case SDLK_PERIOD:
+							case SDLK_GREATER:
+							{
+								motionButtonDown[MOTIONBUTTON_STRAFERIGHT] = false;
 							} break;
 							
 							case 'a':
@@ -826,48 +850,98 @@ namespace LOFI
 				} // end switch
 			} // end while
 			
-			// new player motion
+////////////////////////////////////////////////////////////////////////////////
+// *************************** NEW PLAYER MOTION **************************** //
+////////////////////////////////////////////////////////////////////////////////
+			
+			// are we moving forward?
 			if (motionButtonDown[MOTIONBUTTON_UP])
 			{
 				if (--playerMotionCounter <= 0)
 				{
 					playerMotionCounter = playerMotionDelay;
 					
-					gameState_->MovePlayerForward();
-					sprintf(hudActionMessage, "%s", "Moved Forward...");
-					requestUpdateDisplay = true;
+					if (gameState_->MovePlayerForward())
+					{
+						sprintf(hudActionMessage, "%s", "Moved Forward...");
+						requestUpdateDisplay = true;
+					}
+					else
+					{
+						sprintf(hudActionMessage, "%s", "That way is blocked!");
+						requestUpdateDisplay = true;
+					}
 				}
 			}
 			
+			// are we moving back?
 			if (motionButtonDown[MOTIONBUTTON_DOWN])
 			{
-				gameState_->MovePlayerBack();
-				sprintf(hudActionMessage, "%s", "Moved Back...");
-				requestUpdateDisplay = true;
+				if (--playerMotionCounter <= 0)
+				{
+					playerMotionCounter = playerMotionDelay;
+					
+					if (gameState_->MovePlayerBack())
+					{
+						sprintf(hudActionMessage, "%s", "Moved Back...");
+						requestUpdateDisplay = true;
+					}
+					else
+					{
+						sprintf(hudActionMessage, "%s", "That way is blocked!");
+						requestUpdateDisplay = true;
+					}
+				}
 			}
 			
-			if (motionButtonDown[MOTIONBUTTON_LEFT])
+			// are we strafing left?
+			if (motionButtonDown[MOTIONBUTTON_STRAFELEFT])
 			{
+				if (--playerMotionCounter <= 0)
+				{
+					playerMotionCounter = playerMotionDelay;
+					
+					if (gameState_->MovePlayerLeft())
+					{
+						sprintf(hudActionMessage, "%s", "Stepped Left...");
+						requestUpdateDisplay = true;
+					}
+					else
+					{
+						sprintf(hudActionMessage, "%s", "That way is blocked!");
+						requestUpdateDisplay = true;
+					}
+				}
 			}
 			
-			if (motionButtonDown[MOTIONBUTTON_RIGHT])
+			// are we strafing right?
+			if (motionButtonDown[MOTIONBUTTON_STRAFERIGHT])
 			{
+				if (--playerMotionCounter <= 0)
+				{
+					playerMotionCounter = playerMotionDelay;
+					
+					if (gameState_->MovePlayerRight())
+					{
+						sprintf(hudActionMessage, "%s", "Stepped Right...");
+						requestUpdateDisplay = true;
+					}
+					else
+					{
+						sprintf(hudActionMessage, "%s", "That way is blocked!");
+						requestUpdateDisplay = true;
+					}
+				}
 			}
 
-			// clear the screen blue-ish color
-			// this->ClearScreen(SDL_MapRGB(screen_->format, 0, 192, 255));
-
-			// draw
-			
-			
-			// draw hud
-			
+			// is is time to request the action message be cleared?
 			if (--actionMessageClearCounter <= 0)
 			{
 				actionMessageClearCounter = actionMessageClearDelay;
 				requestClearActionMessage = true;
 			}
 			
+			// should we clear the action message ?
 			if (requestClearActionMessage)
 			{
 				sprintf(hudActionMessage, "%s", "Waiting...");
@@ -875,6 +949,7 @@ namespace LOFI
 				requestUpdateDisplay = true;
 			}
 			
+			// should we update the display?
 			if (requestUpdateDisplay)
 			{
 				actionMessageX = ((screen_->w / 2) - ((strlen(hudActionMessage) * 9) / 2));
@@ -2089,12 +2164,57 @@ namespace LOFI
 	
 	////////////////////////////////////////////////////////////////////////////
 
-	void GameState::MovePlayerForward()
+	bool GameState::MovePlayerForward()
 	{
 		if (currentMap_->CanPassWallForCoordinate(playerPosition_))
 		{
 			playerPosition_->Copy(playerPosition_->GetPositionAheadOfThis(1));
+			return true;
 		}
+		
+		return false;
+	}
+	
+	////////////////////////////////////////////////////////////////////////////
+
+	bool GameState::MovePlayerBack()
+	{
+		Position tempPosition(0, 0, 0);
+		tempPosition.Copy(playerPosition_->GetLeftFacingOfThis()->GetLeftFacingOfThis());
+		if (currentMap_->CanPassWallForCoordinate(&tempPosition))
+		{
+			playerPosition_->Copy(playerPosition_->GetPositionBehindThis(1));
+			return true;
+		}
+		return false;
+	}
+	
+	////////////////////////////////////////////////////////////////////////////
+
+	bool GameState::MovePlayerLeft()
+	{
+		Position tempPosition(0, 0, 0);
+		tempPosition.Copy(playerPosition_->GetLeftFacingOfThis());
+		if (currentMap_->CanPassWallForCoordinate(&tempPosition))
+		{
+			playerPosition_->Copy(playerPosition_->GetPositionLeftOfThis(1));
+			return true;
+		}
+		return false;
+	}
+	
+	////////////////////////////////////////////////////////////////////////////
+
+	bool GameState::MovePlayerRight()
+	{
+		Position tempPosition(0, 0, 0);
+		tempPosition.Copy(playerPosition_->GetRightFacingOfThis());
+		if (currentMap_->CanPassWallForCoordinate(&tempPosition))
+		{
+			playerPosition_->Copy(playerPosition_->GetPositionRightOfThis(1));
+			return true;
+		}
+		return false;
 	}
 
 	////////////////////////////////////////////////////////////////////////////
@@ -2111,18 +2231,6 @@ namespace LOFI
 		playerPosition_->Copy(playerPosition_->GetRightFacingOfThis());
 	}
 
-	////////////////////////////////////////////////////////////////////////////
-
-	void GameState::MovePlayerBack()
-	{
-		Position tempPosition(0, 0, 0);
-		tempPosition.Copy(playerPosition_->GetLeftFacingOfThis()->GetLeftFacingOfThis());
-		if (currentMap_->CanPassWallForCoordinate(&tempPosition))
-		{
-			playerPosition_->Copy(playerPosition_->GetPositionBehindThis(1));
-		}
-	}
-	
 	////////////////////////////////////////////////////////////////////////////
 
 	Map* GameState::GetCurrentMap() const
