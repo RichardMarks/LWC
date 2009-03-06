@@ -715,7 +715,16 @@ namespace LOFI
 			this->Stop();
 			return;
 		}
+		
+		// small compass overlay images
+		SDL_Surface** smallCompassOverlay = new SDL_Surface* [4];
+		
+		smallCompassOverlay[0] = Engine::LoadImageResource("resources/overlays/sm_compass_n.png");
+		smallCompassOverlay[1] = Engine::LoadImageResource("resources/overlays/sm_compass_e.png");
+		smallCompassOverlay[2] = Engine::LoadImageResource("resources/overlays/sm_compass_s.png");
+		smallCompassOverlay[3] = Engine::LoadImageResource("resources/overlays/sm_compass_w.png");
 
+		
 
 		// better input handling
 		const int MOTIONBUTTON_UP 			= 0x0;
@@ -976,8 +985,10 @@ namespace LOFI
 				// blit the game screen onto the main screen
 				Engine::BlitSprite(screen_, mainScreen_, gameScreenX, gameScreenY);
 			
-				// blit the overlay
+				// blit the overlays
 				Engine::BlitSprite(mainScreenOverlay, mainScreen_, 0, 0);
+				
+				Engine::BlitSprite(smallCompassOverlay[compass], mainScreen_, 42, 42);
 				
 				requestUpdateDisplay = false;
 			}
@@ -990,6 +1001,12 @@ namespace LOFI
 			// reduce the cpu hoggingness of SDL ^-^
 			SDL_Delay(20);
 		} // end while
+		
+		Engine::UnloadImageResource(smallCompassOverlay[0]);
+		Engine::UnloadImageResource(smallCompassOverlay[1]);
+		Engine::UnloadImageResource(smallCompassOverlay[2]);
+		Engine::UnloadImageResource(smallCompassOverlay[3]);
+		delete [] smallCompassOverlay;
 		
 		Engine::UnloadImageResource(mainScreenOverlay);
 
