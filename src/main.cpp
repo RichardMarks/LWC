@@ -98,6 +98,8 @@ namespace LOFI
 	class Position
 	{
 	public:
+		Position() : x_(0), y_(0), facing_(0) {};
+		~Position() { x_ = y_ = facing_ = 0; };
 		Position(int x, int y, int facing);
 		Position* GetLeftFacingOfThis();
 		Position* GetRightFacingOfThis();
@@ -106,6 +108,7 @@ namespace LOFI
 		Position* GetPositionAheadOfThis(int steps);
 		Position* GetPositionBehindThis(int steps);
 		void Copy(Position* source);
+		bool InBounds(int left, int top, int right, int bottom, bool inclusive = true);
 		int x_;
 		int y_;
 		int facing_;
@@ -131,6 +134,7 @@ namespace LOFI
 	private:
 		void MakeFirstMockup();
 		void MakeNormalWall(Position* position, int wallID);
+		void RemoveWall(Position* position);
 		int width_;
 		int height_;
 		int*** walls_;
@@ -194,6 +198,7 @@ namespace LOFI
 		ArtManager* artManager_;
 		int viewWidth_;
 		int viewHeight_;
+		SDL_Surface* floorAndCeiling_;
 	}; // end class
 		
 	////////////////////////////////////////////////////////////////////////////
@@ -724,6 +729,7 @@ namespace LOFI
 		smallCompassOverlay[2] = Engine::LoadImageResource("resources/overlays/sm_compass_s.png");
 		smallCompassOverlay[3] = Engine::LoadImageResource("resources/overlays/sm_compass_w.png");
 
+
 		
 
 		// better input handling
@@ -974,7 +980,8 @@ namespace LOFI
 					(0x1 == playerPosition.facing_) ? "East" :
 					(0x2 == playerPosition.facing_) ? "South" :
 					(0x3 == playerPosition.facing_) ? "West" : "<Invalid Direction>");
-			
+					
+				
 				mapView_->RenderMap(screen_, gameState_->GetCurrentMap(), gameState_->GetPlayerPosition());
 				
 				defaultFont_->Print(screen_, actionMessageX, 8, "%s", hudActionMessage);
@@ -1009,7 +1016,8 @@ namespace LOFI
 		delete [] smallCompassOverlay;
 		
 		Engine::UnloadImageResource(mainScreenOverlay);
-
+		
+		
 	}
 
 	////////////////////////////////////////////////////////////////////////////
@@ -1872,6 +1880,13 @@ namespace LOFI
 		facing_ = source->facing_;
 	}
 	
+	bool Position::InBounds(int left, int top, int right, int bottom, bool inclusive)
+	{
+		return (!inclusive) ? 
+			((x_ > left && y_ > top && x_ < right && y_ < bottom) ? true : false) : 
+			((x_ >= left && y_ >= top && x_ <= right && y_ <= bottom) ? true : false);
+	}
+	
 	////////////////////////////////////////////////////////////////////////////
 	
 	Map::Map() :
@@ -2061,30 +2076,62 @@ namespace LOFI
 
 	void Map::MakeFirstMockup()
 	{
+		const int PLAYER_FACING_NORTH 	= 0;
+		const int PLAYER_FACING_SOUTH 	= 2;
+		const int PLAYER_FACING_EAST  	= 1;
+		const int PLAYER_FACING_WEST  	= 3;
+		
+		const int WALL_FACING_EAST 		= 1;
+		const int WALL_FACING_WEST 		= 3;
+		const int WALL_FACING_NORTH 	= 4;
+		const int WALL_FACING_SOUTH 	= 2;
+		
+		
 		width_ = height_ = 0xA; // a 10x10 map
 		this->ClearMap();
 		
 		startingPoints_ = new Position* [1];
-		startingPoints_[0] = new Position(1, 1, 0);
+		startingPoints_[0] = new Position(1, 1, PLAYER_FACING_EAST);
+		
+		
+		const int WALL_TYPE_BRICK 	= 1;
+		const int WALL_TYPE_STONE 	= 2;
+		const int WALL_TYPE_WOOD 	= 3;
+		const int WALL_TYPE_METAL	= 4;
 		
 		// build walls all around the map border
-		
-		const int WALL_FACING_EAST 	= 1;
-		const int WALL_FACING_WEST 	= 3;
-		const int WALL_FACING_NORTH = 4;
-		const int WALL_FACING_SOUTH = 2;
-		
 		for (int row = 0; row < height_; row++)
 		{
-			this->MakeNormalWall(new Position(0, row, WALL_FACING_EAST), 1);
-			this->MakeNormalWall(new Position(width_ - 1, row, WALL_FACING_WEST), 1);
+			this->MakeNormalWall(new Position(0, row, WALL_FACING_EAST), WALL_TYPE_STONE);
+			this->MakeNormalWall(new Position(width_ - 1, row, WALL_FACING_WEST), WALL_TYPE_STONE);
 		}
 		
 		for (int column = 0; column < width_; column++)
 		{
-			this->MakeNormalWall(new Position(column, 0, WALL_FACING_SOUTH), 1);
-			this->MakeNormalWall(new Position(column, height_ - 1, WALL_FACING_NORTH), 1);
+			this->MakeNormalWall(new Position(column, 0, WALL_FACING_SOUTH), WALL_TYPE_STONE);
+			this->MakeNormalWall(new Position(column, height_ - 1, WALL_FACING_NORTH), WALL_TYPE_STONE);
 		}
+		
+		
+		// create a corridor in the west edge of the map
+		for (int column = 2; column < width_ - 2; column++)
+		{
+			this->MakeNormalWall(new Position(column, 1, WALL_FACING_SOUTH), WALL_TYPE_STONE);
+			this->MakeNormalWall(new Position(column, height_ - 2, WALL_FACING_SOUTH), WALL_TYPE_STONE);
+		}
+		
+		for (int row = 2; row < height_ - 1; row++)
+		{
+			this->MakeNormalWall(new Position(1, row, WALL_FACING_EAST), WALL_TYPE_STONE);
+			this->MakeNormalWall(new Position(width_ - 2, row, WALL_FACING_WEST), WALL_TYPE_STONE);
+		}
+		
+		// remove a wall half-way down the west inner wall
+		this->RemoveWall(new Position(2, height_ / 2, WALL_FACING_WEST));
+		
+		
+		
+		
 		
 		#if 0
 		int wallData[] = 
@@ -2143,6 +2190,16 @@ namespace LOFI
 		walls_[position->y_][position->x_][position->facing_] = wallID;
 		passibility_[position->y_][position->x_][position->facing_] = false;
 		
+		Position positionAhead;
+		positionAhead.Copy(position->GetPositionAheadOfThis(1));
+		if (positionAhead.InBounds(0, 0, width_, height_))
+		{
+			int newFacing = (position->facing_ + 2) % 4;
+			walls_[positionAhead.y_][positionAhead.x_][newFacing] = wallID;
+			passibility_[positionAhead.y_][positionAhead.x_][newFacing] = false;
+		}
+		
+		# if 0
 		Position* positionAhead = position->GetPositionAheadOfThis(1);
 		
 		if (
@@ -2152,6 +2209,24 @@ namespace LOFI
 			int newFacing = (position->facing_ + 2) % 4;
 			walls_[positionAhead->y_][positionAhead->x_][newFacing] = wallID;
 			passibility_[positionAhead->y_][positionAhead->x_][newFacing] = false;
+		}
+		#endif
+	}
+	
+	////////////////////////////////////////////////////////////////////////////
+
+	void Map::RemoveWall(Position* position)
+	{
+		walls_[position->y_][position->x_][position->facing_] = 0;
+		passibility_[position->y_][position->x_][position->facing_] = true;
+		
+		Position positionAhead;
+		positionAhead.Copy(position->GetPositionAheadOfThis(1));
+		if (positionAhead.InBounds(0, 0, width_, height_))
+		{
+			int newFacing = (position->facing_ + 2) % 4;
+			walls_[positionAhead.y_][positionAhead.x_][newFacing] = 0;
+			passibility_[positionAhead.y_][positionAhead.x_][newFacing] = true;
 		}
 	}
 	
@@ -2269,6 +2344,8 @@ namespace LOFI
 		viewWidth_(300),
 		viewHeight_(400)
 	{
+		//floorAndCeiling_ = Engine::LoadImageResource("resources/updown/floorceil.png");
+		
 	}
 	
 	////////////////////////////////////////////////////////////////////////////
@@ -2276,12 +2353,17 @@ namespace LOFI
 	MapView::~MapView()
 	{
 		// do not delete the artManager pointer because it is allocated externally
+		
+		//Engine::UnloadImageResource(floorAndCeiling_);
 	}
 	
 	////////////////////////////////////////////////////////////////////////////
 
 	void MapView::RenderMap(SDL_Surface* target, Map* currentMap, Position* currentPosition)
 	{
+		
+		//Engine::BlitSprite(floorAndCeiling_, target, 0, 0);
+		
 		this->DrawSky(target, currentMap, currentPosition);
 		this->DrawGround(target, currentMap, currentPosition);
 		this->DrawDistRank(target, currentMap, currentPosition, 2, 1);
@@ -2297,7 +2379,7 @@ namespace LOFI
 		skyRect.x = skyRect.y = 0;
 		skyRect.w = viewWidth_;
 		skyRect.h = static_cast<int>(0.6f * static_cast<float>(viewHeight_));
-		SDL_FillRect(target, &skyRect, SDL_MapRGB(target->format, 149, 208, 255));
+		SDL_FillRect(target, &skyRect, SDL_MapRGB(target->format, 77, 130, 229));
 	}
 	
 	////////////////////////////////////////////////////////////////////////////
@@ -2309,7 +2391,7 @@ namespace LOFI
 		groundRect.y = static_cast<int>(0.6f * static_cast<float>(viewHeight_));
 		groundRect.w = viewWidth_;
 		groundRect.h = static_cast<int>(0.4f * static_cast<float>(viewHeight_));
-		SDL_FillRect(target, &groundRect, SDL_MapRGB(target->format, 51, 61, 8));
+		SDL_FillRect(target, &groundRect, SDL_MapRGB(target->format, 16, 80, 30));
 	}
 
 	////////////////////////////////////////////////////////////////////////////
