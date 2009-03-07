@@ -14,6 +14,7 @@ projectConfig['executable'] = 'GameExe'
 # if you need to look in special folders for include files add them here
 projectConfig['include path'] = Split("""
 	.
+	./include/
 	""")
 ################################################################################
 # if your libs are in special locations set their paths here
@@ -26,9 +27,7 @@ projectConfig['libraries'] = Split("""
 	""") + buildEnv['LIBS']
 ################################################################################
 # add your sources for your project here
-projectConfig['sources'] = Split("""
-	src/main.cpp
-	""")
+projectConfig['sources'] = Glob('src/*.cpp')
 ################################################################################
 buildEnv.Program(projectConfig['executable'], projectConfig['sources'],
 	LIBS = projectConfig['libraries'],
